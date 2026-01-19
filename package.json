@@ -1,0 +1,22 @@
+{
+  "name": "typeorm-fixtures",
+  "version": "0.0.1",
+  "description": "Automatic fixtures for typeorm",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "typeorm": "^0.3.28",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "jest": "^30.2.0",
+    "pg": "^8.17.1",
+    "pg-mem": "^3.0.5",
+    "ts-jest": "^29.4.6"
+  }
+}
