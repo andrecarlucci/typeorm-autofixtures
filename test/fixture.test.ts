@@ -9,6 +9,8 @@ import User from "./schema-task-tracking/user.entity";
 import { UserSchema } from "./schema-task-tracking/user.schema";
 import UserProfile from "./schema-task-tracking/user-profile.entity";
 import { ProfileSchema as UserProfileSchema } from "./schema-task-tracking/user-profile.schema";
+import Team from "./schema-task-tracking/team.entity";
+import { TeamSchema } from "./schema-task-tracking/team.schema";
 
 /**
  * Rules to decide when to create relations:
@@ -22,7 +24,7 @@ import { ProfileSchema as UserProfileSchema } from "./schema-task-tracking/user-
  */
 
 describe("task-tracking fixture tests", () => {
-  const schemas = [ProjectSchema, TaskSchema, UserSchema, UserProfileSchema];
+  const schemas = [ProjectSchema, TaskSchema, UserSchema, UserProfileSchema, TeamSchema];
 
   let database: Database;
   let fixture: Fixture;
@@ -126,6 +128,45 @@ describe("task-tracking fixture tests", () => {
       fixture.resetContext();
       const task2 = await fixture.create(Task);
       expect(task1.project).not.toBe(task2.project);
+    });
+  });
+
+  describe("When creating a Team", () => {
+    it("Uses UUID suffix for column-level unique (name)", async () => {
+      const team = await fixture.create(Team);
+      expect(team.name).toBeDefined();
+      expect(team.name).toMatch(/^name\d+-[0-9a-f]{8}$/);
+    });
+
+    it("Uses UUID suffix for entity-level unique (code)", async () => {
+      const team = await fixture.create(Team);
+      expect(team.code).toBeDefined();
+      expect(team.code).toMatch(/-[0-9a-f]+$/);
+    });
+
+    it("Uses counter suffix for non-unique column (description)", async () => {
+      const team = await fixture.create(Team);
+      expect(team.description).toBeDefined();
+      expect(team.description).toMatch(/^description\d+-[0-9a-z]+$/);
+      expect(team.description).not.toMatch(/-[0-9a-f]{8}$/);
+    });
+
+    it("Respects max length for code (varchar 15)", async () => {
+      const team = await fixture.create(Team);
+      expect(team.code.length).toBeLessThanOrEqual(15);
+    });
+
+    it("Two teams have different unique values", async () => {
+      const team1 = await fixture.create(Team);
+      const team2 = await fixture.create(Team);
+      expect(team1.name).not.toBe(team2.name);
+      expect(team1.code).not.toBe(team2.code);
+    });
+
+    it("Provided values override generated ones", async () => {
+      const team = await fixture.create(Team, { name: "MyTeam", code: "MT" });
+      expect(team.name).toBe("MyTeam");
+      expect(team.code).toBe("MT");
     });
   });
 });

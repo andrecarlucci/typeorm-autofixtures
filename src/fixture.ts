@@ -1,4 +1,5 @@
 /* eslint-disable no-console */
+import { randomUUID } from "crypto";
 import { ColumnMetadata } from "typeorm/metadata/ColumnMetadata";
 import { DataSource, EntityManager, EntityMetadata, EntityTarget } from "typeorm";
 import { FixtureRelationHelper } from "./fixture-relation.helper";
@@ -128,12 +129,23 @@ export class Fixture {
       return column.enum[0];
     }
 
+    const max = this.getMaxLengthForColumn(column);
+
+    if (this.isUniqueColumn(column, meta)) {
+      const uuidSuffix = `-${this.generateUuidFragment(8)}`;
+      if (uuidSuffix.length >= max) {
+        return uuidSuffix.slice(-max);
+      }
+      const prefixBudget = max - uuidSuffix.length;
+      const prefix = `${column.propertyName}${this.getIndex(meta.name)}`.substring(0, prefixBudget);
+      return `${prefix}${uuidSuffix}`;
+    }
+
     // Use global counter for guaranteed uniqueness across all test runs.
     // The counter persists for the entire test suite run, including across database resets.
     // Trim from the prefix to always preserve the suffix, which contains the uniqueness guarantee.
     Fixture.globalCounter++;
     const counterSuffix = `-${Fixture.globalCounter.toString(36)}`;
-    const max = this.getMaxLengthForColumn(column);
     if (counterSuffix.length >= max) {
       return counterSuffix.slice(-max);
     }
@@ -148,6 +160,26 @@ export class Fixture {
       max = Number(column.length);
     }
     return max;
+  }
+
+  private isUniqueColumn(column: ColumnMetadata, meta: EntityMetadata): boolean {
+    if (column.isPrimary) {
+      return false;
+    }
+    const hasColumnUnique = meta.uniques.some(
+      (u) => u.columns.length === 1 && u.columns[0].propertyName === column.propertyName,
+    );
+    if (hasColumnUnique) {
+      return true;
+    }
+    const hasIndexUnique = meta.indices.some(
+      (i) => i.isUnique && i.columns.length === 1 && i.columns[0].propertyName === column.propertyName,
+    );
+    return hasIndexUnique;
+  }
+
+  private generateUuidFragment(length: number): string {
+    return randomUUID().replace(/-/g, "").substring(0, length);
   }
 
   private assignProvidedValuesToInstance<T>(instance: T, meta: EntityMetadata, params: Partial<T>): void {
