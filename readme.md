@@ -19,9 +19,9 @@ The fixture object will automatically create and keep track of every entity requ
 
 ```
 beforeEach(async () => {
-    await database.refreshDatabase();
-    repository = (await database.getDataSource()).createEntityManager();
-    fixture = new Fixture(await database.getDataSource());
+    const dataSource = await getDataSource();
+    repository = dataSource.createEntityManager();
+    fixture = new Fixture(dataSource);
 });
 
 it('Creates a Task', async () => {
