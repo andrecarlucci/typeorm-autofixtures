@@ -1,13 +1,13 @@
 {
-  "name": "typeorm-fixtures",
+  "name": "typeorm-autofixtures",
   "version": "0.0.1",
   "description": "Automatic fixtures for typeorm",
   "main": "index.js",
   "scripts": {
     "test": "jest"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "andrecarlucci",
+  "license": "MIT",
   "dependencies": {
     "typeorm": "^0.3.28",
     "typescript": "^5.9.3"

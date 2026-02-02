@@ -19,47 +19,50 @@ The fixture object will automatically create and keep track of every entity requ
 
 ```
 beforeEach(async () => {
-    await testManager.refreshDatabase();
-    repository = testManager.getEntityManager();
-    fixture = new Fixture(testManager.getDataSource());
+    await database.refreshDatabase();
+    repository = (await database.getDataSource()).createEntityManager();
+    fixture = new Fixture(await database.getDataSource());
 });
 
-it('Creates an Artist', async () => {
-  const artist = await fixture.create(Artist);
-  expect(artist.id).toBeDefined();
-  expect(artist.profile).toBeUndefined();
+it('Creates a Task', async () => {
+  const task = await fixture.create(Task);
+  expect(task.id).toBeDefined();
+  expect(task.project).toBeDefined();
+  expect(task.users).toBeUndefined();
 });
 ```
 
 Fixture will:
 
-1. Create the object Artist and stub all of its non-nullable properties.
-2. Loop through all its properties:
-   1. Find MANY-TO-ONE for Artist.band -> Band.artists: Create a Band
-   2. Loop through all Band properties and relations:
-      1. Find MANY-TO-ONE for Band.genre -> Genre.bands: Create Genre
-      2. Loop through all Genre properties and relations:
-         1. Find ONE-TO-MANY for Genre.bands -> Band.genre: Use Provided
-         2. This is the invert relation, so it sets the Band in the Genre.bands array
-      3. Find ONE-TO-MANY for Band.artists -> Artist.band: Use Provided
-      4. This is the invert relation, so it sets the Artist in the Bands.artists array
-   3. Find MANY-TO-MANY for Artist.songs -> Song.artists: No Action (many-to-many)
-3. Returns the Artist object populated.
+1. Create the object Task and stub all of its non-nullable properties.
+2. Loop through all its properties and relations:
+   1. Find MANY-TO-ONE for Task.project -> Project.tasks: Create a Project
+   2. Loop through all Project properties and relations:
+      1. Find ONE-TO-MANY for Project.tasks -> Task.project: No Action (one-to-many)
+   3. Find MANY-TO-MANY for Task.users -> User.tasks: No Action (many-to-many)
+3. Returns the Task object populated.
 
 ## Using the context
 
-Every one object is create, it stays in the context.
+Every time an object is created, it stays in the context.
 So, calling methods like this:
 
 ```
-const artist = await fixture.create(Artist);
-const song1 = await fixture.create(Song);
-const song2 = await fixture.create(Song);
+const task1 = await fixture.create(Task);
+const task2 = await fixture.create(Task);
+expect(task1.project).toBe(task2.project);
 ```
 
-Will automatically attach the 2 songs in the previously created Artist.
+Will automatically reuse the previously created Project for both Tasks.
 
-If you don't want this behaviour, just call `fixture.resetContext()` and your next calls will be in completelly different object graph.
+If you don't want this behaviour, just call `fixture.resetContext()` and your next calls will be in a completely different object graph.
+
+```
+const task1 = await fixture.create(Task);
+fixture.resetContext();
+const task2 = await fixture.create(Task);
+expect(task1.project).not.toBe(task2.project);
+```
 
 ## Provide your own values
 
@@ -69,18 +72,16 @@ Ex:
 Scalar types:
 
 ```
-const artist = await fixture.create(Artist, { name: 'A' });
-expect(artist.name).toBe('A');
+const project = await fixture.create(Project, { name: 'My Project' });
+expect(project.name).toBe('My Project');
 ```
 
 Or objects:
 
 ```
-const genre = await fixture.create(Genre, { name: 'Rock' });
-const band = await fixture.create(Band, { name: 'SuperBand', genre });
-expect(band.name).toBe('SuperBand');
-expect(band.genre).toBe(genre);
-expect(band.genre.name).toBe('Rock');
+const project = await fixture.create(Project);
+const task = await fixture.create(Task, { project });
+expect(task.project).toBe(project);
 ```
 
-You can find many more examples [fixture's test](./fixture.test.ts) file.
+You can find many more examples in the [fixture's test](./test/fixture.test.ts) file.
