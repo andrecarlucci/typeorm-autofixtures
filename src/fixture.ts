@@ -178,7 +178,7 @@ export class Fixture {
     return hasIndexUnique;
   }
 
-  private generateUuidFragment(length: number): string {
+  public generateUuidFragment(length: number): string {
     return randomUUID().replace(/-/g, "").substring(0, length);
   }
 
