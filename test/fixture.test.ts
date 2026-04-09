@@ -11,6 +11,10 @@ import UserProfile from "./schema-task-tracking/user-profile.entity";
 import { ProfileSchema as UserProfileSchema } from "./schema-task-tracking/user-profile.schema";
 import Team from "./schema-task-tracking/team.entity";
 import { TeamSchema } from "./schema-task-tracking/team.schema";
+import Company from "./schema-task-tracking/company.entity";
+import { CompanySchema } from "./schema-task-tracking/company.schema";
+import Product from "./schema-task-tracking/product.entity";
+import { ProductSchema } from "./schema-task-tracking/product.schema";
 
 /**
  * Rules to decide when to create relations:
@@ -24,7 +28,7 @@ import { TeamSchema } from "./schema-task-tracking/team.schema";
  */
 
 describe("task-tracking fixture tests", () => {
-  const schemas = [ProjectSchema, TaskSchema, UserSchema, UserProfileSchema, TeamSchema];
+  const schemas = [ProjectSchema, TaskSchema, UserSchema, UserProfileSchema, TeamSchema, CompanySchema, ProductSchema];
 
   let database: Database;
   let fixture: Fixture;
@@ -167,6 +171,52 @@ describe("task-tracking fixture tests", () => {
       const team = await fixture.create(Team, { name: "MyTeam", code: "MT" });
       expect(team.name).toBe("MyTeam");
       expect(team.code).toBe("MT");
+    });
+  });
+
+  describe("When property name differs from column name", () => {
+    it("Auto-generates value for private property with column name mapping", async () => {
+      const company = await fixture.create(Company);
+      expect(company.id).toBeDefined();
+      expect(company._name).toBeDefined();
+    });
+
+    it("Resolves override by database column name", async () => {
+      const company = await fixture.create(Company, { name: "Acme Corp" } as any);
+      expect(company._name).toBe("Acme Corp");
+    });
+
+    it("Resolves override by direct property name", async () => {
+      const company = await fixture.create(Company, { _name: "Direct Corp" });
+      expect(company._name).toBe("Direct Corp");
+    });
+
+    it("Property name takes priority over column name", async () => {
+      const company = await fixture.create(Company, { _name: "ByProperty", name: "ByColumn" } as any);
+      expect(company._name).toBe("ByProperty");
+    });
+  });
+
+  describe("When entity uses getter/setter with private backing field", () => {
+    it("Auto-generates value for private backing field", async () => {
+      const product = await fixture.create(Product);
+      expect(product.id).toBeDefined();
+      expect(product._title).toBeDefined();
+    });
+
+    it("Resolves override through setter name", async () => {
+      const product = await fixture.create(Product, { title: "My Product" } as any);
+      expect(product._title).toBe("My Product");
+    });
+
+    it("Resolves override by direct property name", async () => {
+      const product = await fixture.create(Product, { _title: "Direct Product" });
+      expect(product._title).toBe("Direct Product");
+    });
+
+    it("Property name takes priority over setter name", async () => {
+      const product = await fixture.create(Product, { title: "BySetter", _title: "ByProperty" } as any);
+      expect(product._title).toBe("ByProperty");
     });
   });
 });

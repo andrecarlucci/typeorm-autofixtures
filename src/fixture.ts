@@ -75,7 +75,7 @@ export class Fixture {
   private handleScalarColumns<T>(instance: T, meta: EntityMetadata, providedValues: Partial<T>): void {
     for (const column of meta.columns) {
       const name = column.propertyName;
-      const provided = providedValues[name as keyof T];
+      const provided = this.resolveProvidedValue(instance, column, providedValues);
       if (provided !== undefined) {
         instance[name as keyof T] = provided as any;
         continue;
@@ -184,16 +184,16 @@ export class Fixture {
 
   private assignProvidedValuesToInstance<T>(instance: T, meta: EntityMetadata, params: Partial<T>): void {
     for (const column of meta.columns) {
-      this.assignProvidedValueToInstance(instance, column.propertyName, params[column.propertyName as keyof T]);
+      const value = this.resolveProvidedValue(instance, column, params);
+      if (value !== undefined) {
+        instance[column.propertyName as keyof T] = value;
+      }
     }
     for (const relation of meta.relations) {
-      this.assignProvidedValueToInstance(instance, relation.propertyName, params[relation.propertyName as keyof T]);
-    }
-  }
-
-  private assignProvidedValueToInstance<T>(instance: T, propertyName: string, provideValue: any): void {
-    if (provideValue !== undefined) {
-      instance[propertyName as keyof T] = provideValue;
+      const value = params[relation.propertyName as keyof T];
+      if (value !== undefined) {
+        instance[relation.propertyName as keyof T] = value;
+      }
     }
   }
 
@@ -312,6 +312,50 @@ export class Fixture {
 
       this.log(helper.getLogMessage("No Action"));
     }
+  }
+
+  private resolveProvidedValue<T>(instance: T, column: ColumnMetadata, providedValues: Partial<T>): any {
+    // 1. Direct property name match
+    const byProperty = providedValues[column.propertyName as keyof T];
+    if (byProperty !== undefined) {
+      return byProperty;
+    }
+
+    // 2. Match by database column name (e.g., @Column({ name: "name" }) on property _name)
+    if (column.databaseName !== column.propertyName) {
+      const byColumnName = providedValues[column.databaseName as keyof T];
+      if (byColumnName !== undefined) {
+        return byColumnName;
+      }
+    }
+
+    // 3. Match by setter on the prototype (e.g., set name() on property _name)
+    const prototype = Object.getPrototypeOf(instance);
+    if (prototype) {
+      for (const key of Object.keys(providedValues)) {
+        if (providedValues[key as keyof T] === undefined) continue;
+        const descriptor = this.getPropertyDescriptor(prototype, key);
+        if (descriptor?.set) {
+          // Check if this setter writes to the same backing property
+          // by looking if the column propertyName matches the convention _key
+          if (column.propertyName === `_${key}` || column.propertyName === key) {
+            return providedValues[key as keyof T];
+          }
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  private getPropertyDescriptor(prototype: any, key: string): PropertyDescriptor | undefined {
+    let proto = prototype;
+    while (proto && proto !== Object.prototype) {
+      const descriptor = Object.getOwnPropertyDescriptor(proto, key);
+      if (descriptor) return descriptor;
+      proto = Object.getPrototypeOf(proto);
+    }
+    return undefined;
   }
 
   private addToContext<T>(instance: T, name: string): void {

@@ -94,6 +94,16 @@ const task = await fixture.create(Task, { project });
 expect(task.project).toBe(project);
 ```
 
+### Override resolution order
+
+When matching override keys to entity properties, the fixture resolves values in this order:
+
+1. **Property name** — direct match against the TypeORM metadata `propertyName` (e.g., `_name`)
+2. **Database column name** — match against `@Column({ name: "..." })` or `EntitySchema` column `name` (e.g., `{ name: "Acme" }` matches property `_name` when `@Column({ name: "name" })` is set)
+3. **Setter name** — match against a setter defined on the entity prototype (e.g., `{ title: "My Product" }` matches property `_title` if the class has a `set title(value)` setter)
+
+The first match wins. This means you can use the public-facing name (column name or setter) in your overrides even when the underlying property uses a different name (e.g., prefixed with `_`).
+
 ## Batch creation
 
 Use `createMany` to create multiple entities at once:
