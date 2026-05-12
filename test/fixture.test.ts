@@ -15,6 +15,8 @@ import Company from "./schema-task-tracking/company.entity";
 import { CompanySchema } from "./schema-task-tracking/company.schema";
 import Product from "./schema-task-tracking/product.entity";
 import { ProductSchema } from "./schema-task-tracking/product.schema";
+import Position from "./schema-task-tracking/position.entity";
+import { PositionSchema } from "./schema-task-tracking/position.schema";
 
 /**
  * Rules to decide when to create relations:
@@ -28,7 +30,16 @@ import { ProductSchema } from "./schema-task-tracking/product.schema";
  */
 
 describe("task-tracking fixture tests", () => {
-  const schemas = [ProjectSchema, TaskSchema, UserSchema, UserProfileSchema, TeamSchema, CompanySchema, ProductSchema];
+  const schemas = [
+    ProjectSchema,
+    TaskSchema,
+    UserSchema,
+    UserProfileSchema,
+    TeamSchema,
+    CompanySchema,
+    ProductSchema,
+    PositionSchema,
+  ];
 
   let database: Database;
   let fixture: Fixture;
@@ -217,6 +228,36 @@ describe("task-tracking fixture tests", () => {
     it("Property name takes priority over setter name", async () => {
       const product = await fixture.create(Product, { title: "BySetter", _title: "ByProperty" } as any);
       expect(product._title).toBe("ByProperty");
+    });
+  });
+
+  describe("When creating a Position (composite unique)", () => {
+    it("Uses UUID suffix for column in composite @Unique([companyId, name])", async () => {
+      const company = await fixture.create(Company);
+      const position = await fixture.create(Position, { company });
+      expect(position.name).toMatch(/^name\d+-[0-9a-f]{8}$/);
+    });
+
+    it("Uses UUID suffix for column in composite unique index ([companyId, title])", async () => {
+      const company = await fixture.create(Company);
+      const position = await fixture.create(Position, { company });
+      expect(position.title).toMatch(/^title\d+-[0-9a-f]{8}$/);
+    });
+
+    it("Two positions in the same company get distinct values and both save", async () => {
+      const company = await fixture.create(Company);
+      const a = await fixture.create(Position, { company });
+      const b = await fixture.create(Position, { company });
+      expect(a.name).not.toBe(b.name);
+      expect(a.title).not.toBe(b.title);
+      expect(a.companyId).toBe(b.companyId);
+    });
+
+    it("Provided values override generated ones", async () => {
+      const company = await fixture.create(Company);
+      const position = await fixture.create(Position, { company, name: "Engineer", title: "Senior" });
+      expect(position.name).toBe("Engineer");
+      expect(position.title).toBe("Senior");
     });
   });
 });

@@ -142,6 +142,12 @@ String columns get automatically generated values that respect column length con
 
 The prefix is built from `{columnName}{index}` and is trimmed as needed so the value always fits within the column's max length.
 
+### Composite unique constraints
+
+Columns that participate in a composite unique constraint (`@Unique([col1, col2])` or `@Index([col1, col2], { unique: true })`) are treated the same as single-column uniques: each participating string column gets the UUID suffix, so two rows sharing the other column (e.g., the same `company_id`) won't collide.
+
+> **Note:** composite uniques are auto-resolved as long as at least one string column participates. If a composite is made up entirely of numeric, enum, or boolean columns (e.g. `@Unique(['companyId', 'rank'])` with `rank: int`), those columns still get their type's default value (`0` for ints) — pass explicit overrides in `fixture.create(...)` to avoid collisions.
+
 ## Debug logging
 
 Enable debug logging to see what Fixture is creating:

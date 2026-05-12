@@ -166,16 +166,13 @@ export class Fixture {
     if (column.isPrimary) {
       return false;
     }
-    const hasColumnUnique = meta.uniques.some(
-      (u) => u.columns.length === 1 && u.columns[0].propertyName === column.propertyName,
-    );
-    if (hasColumnUnique) {
+    const inUnique = meta.uniques.some((u) => u.columns.some((c) => c.propertyName === column.propertyName));
+    if (inUnique) {
       return true;
     }
-    const hasIndexUnique = meta.indices.some(
-      (i) => i.isUnique && i.columns.length === 1 && i.columns[0].propertyName === column.propertyName,
+    return meta.indices.some(
+      (i) => i.isUnique && i.columns.some((c) => c.propertyName === column.propertyName),
     );
-    return hasIndexUnique;
   }
 
   public generateUuidFragment(length: number): string {
