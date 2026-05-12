@@ -23,7 +23,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/andrecarlucci/typeorm-fixtures.git"
+    "url": "git+https://github.com/andrecarlucci/typeorm-autofixtures.git"
   },
   "peerDependencies": {
     "typeorm": ">=0.3.0"
