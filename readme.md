@@ -148,6 +148,34 @@ Whichever path runs, the returned entity is placed in the [context](#using-the-c
 
 > **Note:** on the find path, `extras` is ignored — an existing row is returned untouched, never updated.
 
+## Nested inline creation of relations
+
+When you override a "belongs to" relation (many-to-one or one-to-one) with a **plain partial object**, the fixture creates that related entity inline using the partial as its overrides. This collapses the usual create-the-parent-then-create-the-child chains into a single call:
+
+```typescript
+// Before
+const company = await fixture.create(Company, { subdomain: 'acme' });
+const user = await fixture.create(User, { fullName: 'Ana' });
+const uc = await fixture.create(UserCompany, { user, company, status: 'active' });
+
+// After
+const uc = await fixture.create(UserCompany, {
+  user: { fullName: 'Ana' },
+  company: { subdomain: 'acme' },
+  status: 'active',
+});
+```
+
+The value you pass decides what happens:
+
+| Override value | Behavior |
+|---|---|
+| A real entity instance (e.g. from a previous `create`) | Used as-is |
+| A plain object **carrying the primary key** (e.g. `{ id: 5 }`) | Treated as a reference to an existing row |
+| A plain object **without the primary key** (e.g. `{ subdomain: 'acme' }`) | The related entity is **created inline** from the partial |
+
+Nested creation works recursively, so partials can themselves contain partial relations.
+
 ## Default values
 
 When creating an entity, non-nullable columns are automatically populated with default values based on their type:

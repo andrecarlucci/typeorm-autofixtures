@@ -251,6 +251,40 @@ export class Fixture {
     return `${prefix}-${counter}-${fragment}`;
   }
 
+  /**
+   * Resolves the value assigned to a "belongs to" relation (many-to-one / one-to-one) when the
+   * user provides an override. If the override is a plain partial object (not an entity instance
+   * and not carrying the target's primary key), the target entity is created inline from that
+   * partial. Anything else (a real entity instance, or a `{ id }`-style reference) is used as-is.
+   */
+  private async resolveRelationValue(providedValue: any, targetType: EntityTarget<any>): Promise<any> {
+    if (!this.isPartialToCreate(providedValue, targetType)) {
+      return providedValue;
+    }
+    this.log(`### Nested create of ${this.dataSource.getMetadata(targetType).name} from partial`);
+    return this.createInternal(targetType, providedValue);
+  }
+
+  private isPartialToCreate(value: any, targetType: EntityTarget<any>): boolean {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+    if (!this.dataSource.hasMetadata(targetType)) {
+      return false;
+    }
+    const meta = this.dataSource.getMetadata(targetType);
+    const targetClass = meta.target;
+    if (typeof targetClass === "function" && value instanceof targetClass) {
+      return false;
+    }
+    const carriesAllPrimaryKeys =
+      meta.primaryColumns.length > 0 &&
+      meta.primaryColumns.every(
+        (pk) => value[pk.propertyName] !== undefined && value[pk.propertyName] !== null,
+      );
+    return !carriesAllPrimaryKeys;
+  }
+
   private assignProvidedValuesToInstance<T>(instance: T, meta: EntityMetadata, params: Partial<T>): void {
     for (const column of meta.columns) {
       const value = this.resolveProvidedValue(instance, column, params);
@@ -271,7 +305,8 @@ export class Fixture {
       const helper = new FixtureRelationHelper(instance, relation, params);
 
       if (helper.userProvidedValue()) {
-        helper.setInstanceProperty(helper.providedValue);
+        const value = await this.resolveRelationValue(helper.providedValue, helper.targetType);
+        helper.setInstanceProperty(value);
         this.log(helper.getLogMessage("Use Provided"));
         continue;
       }
@@ -300,9 +335,10 @@ export class Fixture {
       const helper = new FixtureRelationHelper(instance, relation, params);
 
       if (helper.userProvidedValue()) {
-        helper.setInstanceProperty(helper.providedValue);
+        const value = await this.resolveRelationValue(helper.providedValue, helper.targetType);
+        helper.setInstanceProperty(value);
         this.log(helper.getLogMessage("Use Provided Value"));
-        helper.addThisInstanceToTheTargetSideArray(helper.providedValue);
+        helper.addThisInstanceToTheTargetSideArray(value);
         continue;
       }
 

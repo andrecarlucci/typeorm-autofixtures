@@ -323,6 +323,47 @@ describe("task-tracking fixture tests", () => {
     });
   });
 
+  describe("Nested inline creation of relations", () => {
+    it("Creates a many-to-one relation from a partial", async () => {
+      const position = await fixture.create(Position, {
+        name: "Engineer",
+        company: { _name: "Acme" } as any,
+      });
+      expect(position.company).toBeDefined();
+      expect(position.company.id).toBeDefined();
+      expect(position.company._name).toBe("Acme");
+      expect(position.companyId).toBe(position.company.id);
+    });
+
+    it("Creates a one-to-one relation from a partial", async () => {
+      const profile = await fixture.create(UserProfile, {
+        user: { name: "Ana" } as any,
+      });
+      expect(profile.user).toBeDefined();
+      expect(profile.user.id).toBeDefined();
+      expect(profile.user.name).toBe("Ana");
+    });
+
+    it("Still uses a real entity instance as-is", async () => {
+      const company = await fixture.create(Company);
+      const position = await fixture.create(Position, { name: "Engineer", company });
+      expect(position.company).toBe(company);
+      const count = await repository.getRepository(Company).count();
+      expect(count).toBe(1);
+    });
+
+    it("Treats a partial carrying the primary key as an existing reference", async () => {
+      const company = await fixture.create(Company);
+      const position = await fixture.create(Position, {
+        name: "Engineer",
+        company: { id: company.id } as any,
+      });
+      expect(position.companyId).toBe(company.id);
+      const count = await repository.getRepository(Company).count();
+      expect(count).toBe(1);
+    });
+  });
+
   describe("When creating a Position (composite unique)", () => {
     it("Uses UUID suffix for column in composite @Unique([companyId, name])", async () => {
       const company = await fixture.create(Company);
