@@ -13,12 +13,20 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
       - run: npm ci
       - run: npm run build
       - run: npm test
-      - run: npm publish --provenance --access public
+      - name: Publish if new version
+        run: |
+          LOCAL=$(node -p "require('./package.json').version")
+          REMOTE=$(npm view typeorm-autofixtures@$LOCAL version || true)
+          if [ "$REMOTE" = "$LOCAL" ]; then
+            echo "$LOCAL already published, skipping"
+          else
+            npm publish --provenance --access public
+          fi
