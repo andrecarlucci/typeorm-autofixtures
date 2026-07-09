@@ -179,6 +179,33 @@ export class Fixture {
     return randomUUID().replace(/-/g, "").substring(0, length);
   }
 
+  /**
+   * Generates a readable, guaranteed-unique string of the form `${prefix}-{counter}-{fragment}`.
+   *
+   * Useful for text columns that need app-level uniqueness but have no database unique
+   * constraint, so the fixture won't auto-uniquify them on its own. Instead of hand-rolling
+   * `` `Market ${Date.now()}-${Math.random().toString(36).slice(2, 8)}` `` in an override,
+   * pass a readable prefix and let the fixture guarantee uniqueness:
+   *
+   * ```typescript
+   * const market = await fixture.create(Market, { _name: fixture.unique("Market") });
+   * // _name === "Market-1-a3f2b1c0"
+   * ```
+   *
+   * Uniqueness is guaranteed by a monotonic counter (unique within a single process run)
+   * combined with a random UUID fragment (guards against collisions across parallel test
+   * workers, each of which starts its own counter).
+   *
+   * @param prefix human-readable prefix, e.g. "Market"
+   * @param fragmentLength length of the random UUID fragment appended for cross-process safety (default 8)
+   */
+  public unique(prefix: string, fragmentLength = 8): string {
+    Fixture.globalCounter++;
+    const counter = Fixture.globalCounter.toString(36);
+    const fragment = this.generateUuidFragment(fragmentLength);
+    return `${prefix}-${counter}-${fragment}`;
+  }
+
   private assignProvidedValuesToInstance<T>(instance: T, meta: EntityMetadata, params: Partial<T>): void {
     for (const column of meta.columns) {
       const value = this.resolveProvidedValue(instance, column, params);
