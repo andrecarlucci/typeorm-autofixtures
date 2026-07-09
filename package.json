@@ -1,6 +1,6 @@
 {
   "name": "typeorm-autofixtures",
-  "version": "2.0.0",
+  "version": "1.3.0",
   "description": "Automatic fixtures for typeorm",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -26,7 +26,7 @@
     "url": "git+https://github.com/andrecarlucci/typeorm-autofixtures.git"
   },
   "peerDependencies": {
-    "typeorm": ">=1.0.0"
+    "typeorm": ">=0.3.0"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
