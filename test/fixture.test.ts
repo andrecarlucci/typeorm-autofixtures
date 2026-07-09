@@ -231,6 +231,29 @@ describe("task-tracking fixture tests", () => {
     });
   });
 
+  describe("fixture.unique(prefix)", () => {
+    it("Produces a value that starts with the given prefix", async () => {
+      const value = fixture.unique("Market");
+      expect(value).toMatch(/^Market-[0-9a-z]+-[0-9a-f]{8}$/);
+    });
+
+    it("Produces distinct values on every call", async () => {
+      const values = new Set(Array.from({ length: 100 }, () => fixture.unique("Market")));
+      expect(values.size).toBe(100);
+    });
+
+    it("Respects a custom fragment length", async () => {
+      const value = fixture.unique("Market", 4);
+      expect(value).toMatch(/^Market-[0-9a-z]+-[0-9a-f]{4}$/);
+    });
+
+    it("Can be used as an override for an app-level unique text column", async () => {
+      const name = fixture.unique("Team");
+      const team = await fixture.create(Team, { name });
+      expect(team.name).toBe(name);
+    });
+  });
+
   describe("When creating a Position (composite unique)", () => {
     it("Uses UUID suffix for column in composite @Unique([companyId, name])", async () => {
       const company = await fixture.create(Company);

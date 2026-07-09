@@ -148,6 +148,34 @@ Columns that participate in a composite unique constraint (`@Unique([col1, col2]
 
 > **Note:** composite uniques are auto-resolved as long as at least one string column participates. If a composite is made up entirely of numeric, enum, or boolean columns (e.g. `@Unique(['companyId', 'rank'])` with `rank: int`), those columns still get their type's default value (`0` for ints) — pass explicit overrides in `fixture.create(...)` to avoid collisions.
 
+## Generating unique values on demand
+
+The automatic uniqueness above only kicks in for columns that have a **database** unique constraint and are **not** overridden. Text columns that need only *app-level* uniqueness (no DB constraint) don't get it — so tests often hand-roll something like:
+
+```typescript
+const market = await fixture.create(Market, {
+  _name: `Market ${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+});
+```
+
+Use `fixture.unique(prefix)` instead. It returns a readable, guaranteed-unique string you can drop into any override:
+
+```typescript
+const market = await fixture.create(Market, { _name: fixture.unique("Market") });
+// market._name === "Market-1-a3f2b1c0"
+```
+
+The value has the shape `${prefix}-{counter}-{fragment}`:
+
+- **counter** — a monotonic counter, guaranteeing uniqueness within a single process run.
+- **fragment** — a random UUID fragment (8 hex chars by default), guarding against collisions across parallel test workers, each of which starts its own counter.
+
+Pass a second argument to change the fragment length:
+
+```typescript
+fixture.unique("Market", 4); // "Market-1-a3f2"
+```
+
 ## Debug logging
 
 Enable debug logging to see what Fixture is creating:
