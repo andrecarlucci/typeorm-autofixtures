@@ -45,6 +45,18 @@ export default class Database {
         return { days: days };
       },
     });
+
+    // TypeORM 1.0's postgres schema loader reads table/column comments via
+    // obj_description(...::regclass) / col_description(...). pg-mem implements
+    // neither the regclass cast nor those functions, so synchronize() throws.
+    // Comments are cosmetic metadata and are always absent in these tests, so we
+    // stub the comment lookups to return no rows (i.e. "no comments defined").
+    this.db.public.interceptQueries((sql) => {
+      if (sql.includes('obj_description') || sql.includes('col_description')) {
+        return [];
+      }
+      return null;
+    });
   }
 
   public async initialize() {
