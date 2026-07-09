@@ -17,6 +17,8 @@ import Product from "./schema-task-tracking/product.entity";
 import { ProductSchema } from "./schema-task-tracking/product.schema";
 import Position from "./schema-task-tracking/position.entity";
 import { PositionSchema } from "./schema-task-tracking/position.schema";
+import Event from "./schema-task-tracking/event.entity";
+import { EventSchema } from "./schema-task-tracking/event.schema";
 
 /**
  * Rules to decide when to create relations:
@@ -39,6 +41,7 @@ describe("task-tracking fixture tests", () => {
     CompanySchema,
     ProductSchema,
     PositionSchema,
+    EventSchema,
   ];
 
   let database: Database;
@@ -320,6 +323,42 @@ describe("task-tracking fixture tests", () => {
       const another = await fixture.create(Position);
       expect(another.companyId).toBe(company.id);
       expect(existing.companyId).toBe(company.id);
+    });
+  });
+
+  describe("Create/Update date column overrides", () => {
+    it("Auto-generates timestamps when not provided", async () => {
+      const event = await fixture.create(Event, { name: "launch" });
+      expect(event.createdAt).toBeDefined();
+      expect(event.updatedAt).toBeDefined();
+    });
+
+    it("Honors a provided createdAt override on the instance and in the database", async () => {
+      const past = new Date("2020-01-01T00:00:00.000Z");
+      const event = await fixture.create(Event, { name: "launch", createdAt: past });
+      expect(new Date(event.createdAt).getTime()).toBe(past.getTime());
+
+      const row = await repository.getRepository(Event).findOneByOrFail({ id: event.id });
+      expect(new Date(row.createdAt).getTime()).toBe(past.getTime());
+    });
+
+    it("Honors a provided updatedAt override in the database", async () => {
+      const past = new Date("2019-06-15T12:00:00.000Z");
+      const event = await fixture.create(Event, { name: "launch", updatedAt: past });
+      expect(new Date(event.updatedAt).getTime()).toBe(past.getTime());
+
+      const row = await repository.getRepository(Event).findOneByOrFail({ id: event.id });
+      expect(new Date(row.updatedAt).getTime()).toBe(past.getTime());
+    });
+
+    it("Honors both overrides together", async () => {
+      const created = new Date("2018-01-01T00:00:00.000Z");
+      const updated = new Date("2018-03-01T00:00:00.000Z");
+      const event = await fixture.create(Event, { name: "launch", createdAt: created, updatedAt: updated });
+
+      const row = await repository.getRepository(Event).findOneByOrFail({ id: event.id });
+      expect(new Date(row.createdAt).getTime()).toBe(created.getTime());
+      expect(new Date(row.updatedAt).getTime()).toBe(updated.getTime());
     });
   });
 

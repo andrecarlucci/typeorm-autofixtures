@@ -16,10 +16,11 @@ export class Fixture {
   }
 
   public async create<T>(type: EntityTarget<T>, providedValues: Partial<T> = {}): Promise<T> {
-    const name = this.dataSource.getMetadata(type).name;
-    this.log(`===> User Call: Create ${name} ===`);
+    const meta = this.dataSource.getMetadata(type);
+    this.log(`===> User Call: Create ${meta.name} ===`);
     const instance = await this.createInternal(type, providedValues);
     await this.repository.save(instance);
+    await this.applyProvidedTimestampOverrides(instance, meta, providedValues);
     return instance;
   }
 
@@ -39,8 +40,41 @@ export class Fixture {
     await this.handleManyToMany(instance, meta, providedValues);
 
     await this.repository.save(instance);
+    await this.applyProvidedTimestampOverrides(instance, meta, providedValues);
     this.logInstanceCreated(instance, meta);
     return instance;
+  }
+
+  /**
+   * TypeORM overwrites `@CreateDateColumn` / `@UpdateDateColumn` values on insert and update, so a
+   * value the user passed as an override is lost after `save`. This detects such an override and
+   * re-applies it with an explicit follow-up UPDATE (which does not auto-touch the timestamps),
+   * then mirrors the value back onto the instance. Useful for controlling ordering/history in tests.
+   */
+  private async applyProvidedTimestampOverrides<T>(
+    instance: T,
+    meta: EntityMetadata,
+    providedValues: Partial<T>,
+  ): Promise<void> {
+    const updates: Record<string, any> = {};
+    for (const column of meta.columns) {
+      if (!column.isCreateDate && !column.isUpdateDate) {
+        continue;
+      }
+      const provided = this.resolveProvidedValue(instance, column, providedValues);
+      if (provided !== undefined) {
+        instance[column.propertyName as keyof T] = provided as any;
+        updates[column.propertyName] = provided;
+      }
+    }
+    if (Object.keys(updates).length === 0) {
+      return;
+    }
+    const criteria: Record<string, any> = {};
+    for (const pk of meta.primaryColumns) {
+      criteria[pk.propertyName] = instance[pk.propertyName as keyof T];
+    }
+    await this.repository.update(meta.target as EntityTarget<any>, criteria, updates as any);
   }
 
   private logInstanceCreated<T>(instance: T, meta: EntityMetadata): void {

@@ -233,6 +233,20 @@ Pass a second argument to change the fragment length:
 fixture.unique("Market", 4); // "Market-1-a3f2"
 ```
 
+## Create / update date column overrides
+
+TypeORM overwrites `@CreateDateColumn` and `@UpdateDateColumn` values with the current time on every insert and update, so passing them as overrides to `create` normally has no effect — the value is lost as soon as the row is saved.
+
+The fixture detects such an override and re-applies it with an explicit follow-up UPDATE, so the value sticks both on the returned instance and in the database. This is handy for controlling ordering or building history in tests:
+
+```typescript
+const event = await fixture.create(Event, {
+  createdAt: new Date('2020-01-01'),
+  updatedAt: new Date('2020-03-01'),
+});
+// event.createdAt / event.updatedAt hold the provided dates, and so do the persisted columns.
+```
+
 ## Debug logging
 
 Enable debug logging to see what Fixture is creating:
