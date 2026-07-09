@@ -83,10 +83,22 @@ export class Fixture {
     this.log(`### Created ${meta.name}. PK: ${primaryKeyColumnName} = ${primaryKeyValue}`);
   }
 
-  public async createMany<T>(times: number, type: EntityTarget<T>, providedValues: Partial<T> = {}): Promise<T[]> {
+  /**
+   * Creates `times` entities of the given type.
+   *
+   * The third argument can be either a single `Partial<T>` applied to every entity, or a factory
+   * callback `(index) => Partial<T>` invoked per item — use the callback when each entity needs its
+   * own values (e.g. distinct names): `createMany(3, User, (i) => ({ fullName: \`Person ${i}\` }))`.
+   */
+  public async createMany<T>(
+    times: number,
+    type: EntityTarget<T>,
+    providedValues: Partial<T> | ((index: number) => Partial<T>) = {},
+  ): Promise<T[]> {
     const results: T[] = [];
     for (let i = 0; i < times; i++) {
-      results.push(await this.create(type, providedValues));
+      const values = typeof providedValues === "function" ? providedValues(i) : providedValues;
+      results.push(await this.create(type, values));
     }
     return results;
   }

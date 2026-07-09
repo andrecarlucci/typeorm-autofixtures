@@ -119,6 +119,13 @@ It also accepts optional values applied to every created entity:
 const tasks = await fixture.createMany(3, Task, { name: 'Bulk Task' });
 ```
 
+When each entity needs its own values (for example distinct names on a unique column), pass a factory callback that receives the item index instead of a shared object:
+
+```typescript
+const people = await fixture.createMany(3, User, (i) => ({ fullName: `Person ${i}` }));
+// fullName === 'Person 0', 'Person 1', 'Person 2'
+```
+
 ## Find-or-create
 
 Use `getOrCreate` to reuse an existing row when one already matches, or create it otherwise. This replaces the hand-rolled find-or-create helpers tests tend to accumulate:

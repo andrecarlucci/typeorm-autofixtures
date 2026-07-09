@@ -326,6 +326,28 @@ describe("task-tracking fixture tests", () => {
     });
   });
 
+  describe("createMany", () => {
+    it("Creates the requested number of entities", async () => {
+      const teams = await fixture.createMany(3, Team);
+      expect(teams).toHaveLength(3);
+    });
+
+    it("Applies a single shared override to every entity", async () => {
+      const users = await fixture.createMany(3, User, { name: "Shared" });
+      expect(users.map((u) => u.name)).toEqual(["Shared", "Shared", "Shared"]);
+    });
+
+    it("Applies a per-index factory callback", async () => {
+      const teams = await fixture.createMany(3, Team, (i) => ({ name: `Team ${i}` }));
+      expect(teams.map((t) => t.name)).toEqual(["Team 0", "Team 1", "Team 2"]);
+    });
+
+    it("Factory can vary any field per index", async () => {
+      const users = await fixture.createMany(2, User, (i) => ({ name: `Person ${i}`, email: `p${i}@test.dev` }));
+      expect(users.map((u) => u.email)).toEqual(["p0@test.dev", "p1@test.dev"]);
+    });
+  });
+
   describe("Create/Update date column overrides", () => {
     it("Auto-generates timestamps when not provided", async () => {
       const event = await fixture.create(Event, { name: "launch" });
