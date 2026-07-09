@@ -17,6 +17,12 @@ import Product from "./schema-task-tracking/product.entity";
 import { ProductSchema } from "./schema-task-tracking/product.schema";
 import Position from "./schema-task-tracking/position.entity";
 import { PositionSchema } from "./schema-task-tracking/position.schema";
+import Event from "./schema-task-tracking/event.entity";
+import { EventSchema } from "./schema-task-tracking/event.schema";
+import Citizen from "./schema-task-tracking/citizen.entity";
+import { CitizenSchema } from "./schema-task-tracking/citizen.schema";
+import Passport from "./schema-task-tracking/passport.entity";
+import { PassportSchema } from "./schema-task-tracking/passport.schema";
 
 /**
  * Rules to decide when to create relations:
@@ -39,6 +45,9 @@ describe("task-tracking fixture tests", () => {
     CompanySchema,
     ProductSchema,
     PositionSchema,
+    EventSchema,
+    CitizenSchema,
+    PassportSchema,
   ];
 
   let database: Database;
@@ -320,6 +329,143 @@ describe("task-tracking fixture tests", () => {
       const another = await fixture.create(Position);
       expect(another.companyId).toBe(company.id);
       expect(existing.companyId).toBe(company.id);
+    });
+  });
+
+  describe("Provided relations echo back on the returned instance", () => {
+    it("Many-to-one provided value is the same reference", async () => {
+      const company = await fixture.create(Company);
+      const position = await fixture.create(Position, { name: "Engineer", company });
+      expect(position.company).toBe(company);
+    });
+
+    it("Non-owning one-to-one provided value echoes", async () => {
+      const user = await fixture.create(User);
+      const profile = await fixture.create(UserProfile, { user });
+      expect(profile.user).toBe(user);
+    });
+
+    it("Many-to-many provided array echoes", async () => {
+      const user = await fixture.create(User);
+      const task = await fixture.create(Task, { users: [user] } as any);
+      expect((task.users as any)[0]).toBe(user);
+    });
+
+    it("Nested-created relation echoes back", async () => {
+      const position = await fixture.create(Position, { name: "Engineer", company: { _name: "Acme" } as any });
+      expect(position.company._name).toBe("Acme");
+      expect(position.companyId).toBe(position.company.id);
+    });
+
+    it("Owning one-to-one with cascade echoes the provided reference", async () => {
+      // Owning one-to-one + cascade is the path most likely to have `save` swap the relation
+      // reference for a managed copy on some DB backends; the echo guarantee keeps it stable.
+      const citizen = await fixture.create(Citizen, { name: "Ana" });
+      const passport = await fixture.create(Passport, { code: "P1", citizen });
+      expect(passport.citizen).toBe(citizen);
+
+      // The relationship is still persisted correctly.
+      const row = await repository.getRepository(Passport).findOneOrFail({ where: { id: passport.id }, relations: { citizen: true } });
+      expect(row.citizen.id).toBe(citizen.id);
+    });
+  });
+
+  describe("createMany", () => {
+    it("Creates the requested number of entities", async () => {
+      const teams = await fixture.createMany(3, Team);
+      expect(teams).toHaveLength(3);
+    });
+
+    it("Applies a single shared override to every entity", async () => {
+      const users = await fixture.createMany(3, User, { name: "Shared" });
+      expect(users.map((u) => u.name)).toEqual(["Shared", "Shared", "Shared"]);
+    });
+
+    it("Applies a per-index factory callback", async () => {
+      const teams = await fixture.createMany(3, Team, (i) => ({ name: `Team ${i}` }));
+      expect(teams.map((t) => t.name)).toEqual(["Team 0", "Team 1", "Team 2"]);
+    });
+
+    it("Factory can vary any field per index", async () => {
+      const users = await fixture.createMany(2, User, (i) => ({ name: `Person ${i}`, email: `p${i}@test.dev` }));
+      expect(users.map((u) => u.email)).toEqual(["p0@test.dev", "p1@test.dev"]);
+    });
+  });
+
+  describe("Create/Update date column overrides", () => {
+    it("Auto-generates timestamps when not provided", async () => {
+      const event = await fixture.create(Event, { name: "launch" });
+      expect(event.createdAt).toBeDefined();
+      expect(event.updatedAt).toBeDefined();
+    });
+
+    it("Honors a provided createdAt override on the instance and in the database", async () => {
+      const past = new Date("2020-01-01T00:00:00.000Z");
+      const event = await fixture.create(Event, { name: "launch", createdAt: past });
+      expect(new Date(event.createdAt).getTime()).toBe(past.getTime());
+
+      const row = await repository.getRepository(Event).findOneByOrFail({ id: event.id });
+      expect(new Date(row.createdAt).getTime()).toBe(past.getTime());
+    });
+
+    it("Honors a provided updatedAt override in the database", async () => {
+      const past = new Date("2019-06-15T12:00:00.000Z");
+      const event = await fixture.create(Event, { name: "launch", updatedAt: past });
+      expect(new Date(event.updatedAt).getTime()).toBe(past.getTime());
+
+      const row = await repository.getRepository(Event).findOneByOrFail({ id: event.id });
+      expect(new Date(row.updatedAt).getTime()).toBe(past.getTime());
+    });
+
+    it("Honors both overrides together", async () => {
+      const created = new Date("2018-01-01T00:00:00.000Z");
+      const updated = new Date("2018-03-01T00:00:00.000Z");
+      const event = await fixture.create(Event, { name: "launch", createdAt: created, updatedAt: updated });
+
+      const row = await repository.getRepository(Event).findOneByOrFail({ id: event.id });
+      expect(new Date(row.createdAt).getTime()).toBe(created.getTime());
+      expect(new Date(row.updatedAt).getTime()).toBe(updated.getTime());
+    });
+  });
+
+  describe("Nested inline creation of relations", () => {
+    it("Creates a many-to-one relation from a partial", async () => {
+      const position = await fixture.create(Position, {
+        name: "Engineer",
+        company: { _name: "Acme" } as any,
+      });
+      expect(position.company).toBeDefined();
+      expect(position.company.id).toBeDefined();
+      expect(position.company._name).toBe("Acme");
+      expect(position.companyId).toBe(position.company.id);
+    });
+
+    it("Creates a one-to-one relation from a partial", async () => {
+      const profile = await fixture.create(UserProfile, {
+        user: { name: "Ana" } as any,
+      });
+      expect(profile.user).toBeDefined();
+      expect(profile.user.id).toBeDefined();
+      expect(profile.user.name).toBe("Ana");
+    });
+
+    it("Still uses a real entity instance as-is", async () => {
+      const company = await fixture.create(Company);
+      const position = await fixture.create(Position, { name: "Engineer", company });
+      expect(position.company).toBe(company);
+      const count = await repository.getRepository(Company).count();
+      expect(count).toBe(1);
+    });
+
+    it("Treats a partial carrying the primary key as an existing reference", async () => {
+      const company = await fixture.create(Company);
+      const position = await fixture.create(Position, {
+        name: "Engineer",
+        company: { id: company.id } as any,
+      });
+      expect(position.companyId).toBe(company.id);
+      const count = await repository.getRepository(Company).count();
+      expect(count).toBe(1);
     });
   });
 

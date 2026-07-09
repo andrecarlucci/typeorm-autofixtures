@@ -119,6 +119,13 @@ It also accepts optional values applied to every created entity:
 const tasks = await fixture.createMany(3, Task, { name: 'Bulk Task' });
 ```
 
+When each entity needs its own values (for example distinct names on a unique column), pass a factory callback that receives the item index instead of a shared object:
+
+```typescript
+const people = await fixture.createMany(3, User, (i) => ({ fullName: `Person ${i}` }));
+// fullName === 'Person 0', 'Person 1', 'Person 2'
+```
+
 ## Find-or-create
 
 Use `getOrCreate` to reuse an existing row when one already matches, or create it otherwise. This replaces the hand-rolled find-or-create helpers tests tend to accumulate:
@@ -147,6 +154,34 @@ expect(b.id).toBe(a.id);
 Whichever path runs, the returned entity is placed in the [context](#using-the-context) like a freshly created one, so later `create` calls can reuse it.
 
 > **Note:** on the find path, `extras` is ignored — an existing row is returned untouched, never updated.
+
+## Nested inline creation of relations
+
+When you override a "belongs to" relation (many-to-one or one-to-one) with a **plain partial object**, the fixture creates that related entity inline using the partial as its overrides. This collapses the usual create-the-parent-then-create-the-child chains into a single call:
+
+```typescript
+// Before
+const company = await fixture.create(Company, { subdomain: 'acme' });
+const user = await fixture.create(User, { fullName: 'Ana' });
+const uc = await fixture.create(UserCompany, { user, company, status: 'active' });
+
+// After
+const uc = await fixture.create(UserCompany, {
+  user: { fullName: 'Ana' },
+  company: { subdomain: 'acme' },
+  status: 'active',
+});
+```
+
+The value you pass decides what happens:
+
+| Override value | Behavior |
+|---|---|
+| A real entity instance (e.g. from a previous `create`) | Used as-is |
+| A plain object **carrying the primary key** (e.g. `{ id: 5 }`) | Treated as a reference to an existing row |
+| A plain object **without the primary key** (e.g. `{ subdomain: 'acme' }`) | The related entity is **created inline** from the partial |
+
+Nested creation works recursively, so partials can themselves contain partial relations.
 
 ## Default values
 
@@ -203,6 +238,32 @@ Pass a second argument to change the fragment length:
 
 ```typescript
 fixture.unique("Market", 4); // "Market-1-a3f2"
+```
+
+## Provided relations echo back
+
+Any relation you pass as an override is guaranteed to come back on the returned instance as the **exact same object reference** you passed in:
+
+```typescript
+const company = await fixture.create(Company);
+const position = await fixture.create(Position, { company });
+expect(position.company).toBe(company); // always true
+```
+
+TypeORM's `save` can, on some setups (the owning side of a one-to-one, cascaded relations, subscribers), replace a relation reference with a freshly managed copy — which is why tests sometimes had to re-assign relations by hand (`entity.user = user`) after creating. The fixture re-applies your provided values after saving, so those fixups are no longer needed. Relations created inline from a [partial](#nested-inline-creation-of-relations) keep the entity that was created for them.
+
+## Create / update date column overrides
+
+TypeORM overwrites `@CreateDateColumn` and `@UpdateDateColumn` values with the current time on every insert and update, so passing them as overrides to `create` normally has no effect — the value is lost as soon as the row is saved.
+
+The fixture detects such an override and re-applies it with an explicit follow-up UPDATE, so the value sticks both on the returned instance and in the database. This is handy for controlling ordering or building history in tests:
+
+```typescript
+const event = await fixture.create(Event, {
+  createdAt: new Date('2020-01-01'),
+  updatedAt: new Date('2020-03-01'),
+});
+// event.createdAt / event.updatedAt hold the provided dates, and so do the persisted columns.
 ```
 
 ## Debug logging

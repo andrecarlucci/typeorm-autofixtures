@@ -16,10 +16,12 @@ export class Fixture {
   }
 
   public async create<T>(type: EntityTarget<T>, providedValues: Partial<T> = {}): Promise<T> {
-    const name = this.dataSource.getMetadata(type).name;
-    this.log(`===> User Call: Create ${name} ===`);
+    const meta = this.dataSource.getMetadata(type);
+    this.log(`===> User Call: Create ${meta.name} ===`);
     const instance = await this.createInternal(type, providedValues);
     await this.repository.save(instance);
+    await this.applyProvidedTimestampOverrides(instance, meta, providedValues);
+    this.echoProvidedRelations(instance, meta, providedValues);
     return instance;
   }
 
@@ -39,8 +41,67 @@ export class Fixture {
     await this.handleManyToMany(instance, meta, providedValues);
 
     await this.repository.save(instance);
+    await this.applyProvidedTimestampOverrides(instance, meta, providedValues);
+    this.echoProvidedRelations(instance, meta, providedValues);
     this.logInstanceCreated(instance, meta);
     return instance;
+  }
+
+  /**
+   * Guarantees a relation the caller passed as an override is echoed back on the returned instance
+   * as the exact same object reference. `save` — especially the owning side of a one-to-one, or any
+   * cascaded relation — can replace the reference with a freshly managed copy, forcing tests to
+   * re-assign it by hand (`entity.user = user`). Re-applying the provided value here removes that.
+   *
+   * Partial overrides that were created inline (see nested relation creation) are left alone: the
+   * relation already holds the entity that was created for them.
+   */
+  private echoProvidedRelations<T>(instance: T, meta: EntityMetadata, providedValues: Partial<T>): void {
+    for (const relation of meta.relations) {
+      const propertyName = relation.propertyName as keyof T;
+      const provided = providedValues[propertyName];
+      if (provided === undefined) {
+        continue;
+      }
+      if (this.isPartialToCreate(provided, relation.inverseEntityMetadata.target as EntityTarget<any>)) {
+        continue;
+      }
+      if (instance[propertyName] !== provided) {
+        instance[propertyName] = provided as any;
+      }
+    }
+  }
+
+  /**
+   * TypeORM overwrites `@CreateDateColumn` / `@UpdateDateColumn` values on insert and update, so a
+   * value the user passed as an override is lost after `save`. This detects such an override and
+   * re-applies it with an explicit follow-up UPDATE (which does not auto-touch the timestamps),
+   * then mirrors the value back onto the instance. Useful for controlling ordering/history in tests.
+   */
+  private async applyProvidedTimestampOverrides<T>(
+    instance: T,
+    meta: EntityMetadata,
+    providedValues: Partial<T>,
+  ): Promise<void> {
+    const updates: Record<string, any> = {};
+    for (const column of meta.columns) {
+      if (!column.isCreateDate && !column.isUpdateDate) {
+        continue;
+      }
+      const provided = this.resolveProvidedValue(instance, column, providedValues);
+      if (provided !== undefined) {
+        instance[column.propertyName as keyof T] = provided as any;
+        updates[column.propertyName] = provided;
+      }
+    }
+    if (Object.keys(updates).length === 0) {
+      return;
+    }
+    const criteria: Record<string, any> = {};
+    for (const pk of meta.primaryColumns) {
+      criteria[pk.propertyName] = instance[pk.propertyName as keyof T];
+    }
+    await this.repository.update(meta.target as EntityTarget<any>, criteria, updates as any);
   }
 
   private logInstanceCreated<T>(instance: T, meta: EntityMetadata): void {
@@ -49,10 +110,22 @@ export class Fixture {
     this.log(`### Created ${meta.name}. PK: ${primaryKeyColumnName} = ${primaryKeyValue}`);
   }
 
-  public async createMany<T>(times: number, type: EntityTarget<T>, providedValues: Partial<T> = {}): Promise<T[]> {
+  /**
+   * Creates `times` entities of the given type.
+   *
+   * The third argument can be either a single `Partial<T>` applied to every entity, or a factory
+   * callback `(index) => Partial<T>` invoked per item — use the callback when each entity needs its
+   * own values (e.g. distinct names): `createMany(3, User, (i) => ({ fullName: \`Person ${i}\` }))`.
+   */
+  public async createMany<T>(
+    times: number,
+    type: EntityTarget<T>,
+    providedValues: Partial<T> | ((index: number) => Partial<T>) = {},
+  ): Promise<T[]> {
     const results: T[] = [];
     for (let i = 0; i < times; i++) {
-      results.push(await this.create(type, providedValues));
+      const values = typeof providedValues === "function" ? providedValues(i) : providedValues;
+      results.push(await this.create(type, values));
     }
     return results;
   }
@@ -251,6 +324,40 @@ export class Fixture {
     return `${prefix}-${counter}-${fragment}`;
   }
 
+  /**
+   * Resolves the value assigned to a "belongs to" relation (many-to-one / one-to-one) when the
+   * user provides an override. If the override is a plain partial object (not an entity instance
+   * and not carrying the target's primary key), the target entity is created inline from that
+   * partial. Anything else (a real entity instance, or a `{ id }`-style reference) is used as-is.
+   */
+  private async resolveRelationValue(providedValue: any, targetType: EntityTarget<any>): Promise<any> {
+    if (!this.isPartialToCreate(providedValue, targetType)) {
+      return providedValue;
+    }
+    this.log(`### Nested create of ${this.dataSource.getMetadata(targetType).name} from partial`);
+    return this.createInternal(targetType, providedValue);
+  }
+
+  private isPartialToCreate(value: any, targetType: EntityTarget<any>): boolean {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return false;
+    }
+    if (!this.dataSource.hasMetadata(targetType)) {
+      return false;
+    }
+    const meta = this.dataSource.getMetadata(targetType);
+    const targetClass = meta.target;
+    if (typeof targetClass === "function" && value instanceof targetClass) {
+      return false;
+    }
+    const carriesAllPrimaryKeys =
+      meta.primaryColumns.length > 0 &&
+      meta.primaryColumns.every(
+        (pk) => value[pk.propertyName] !== undefined && value[pk.propertyName] !== null,
+      );
+    return !carriesAllPrimaryKeys;
+  }
+
   private assignProvidedValuesToInstance<T>(instance: T, meta: EntityMetadata, params: Partial<T>): void {
     for (const column of meta.columns) {
       const value = this.resolveProvidedValue(instance, column, params);
@@ -271,7 +378,8 @@ export class Fixture {
       const helper = new FixtureRelationHelper(instance, relation, params);
 
       if (helper.userProvidedValue()) {
-        helper.setInstanceProperty(helper.providedValue);
+        const value = await this.resolveRelationValue(helper.providedValue, helper.targetType);
+        helper.setInstanceProperty(value);
         this.log(helper.getLogMessage("Use Provided"));
         continue;
       }
@@ -300,9 +408,10 @@ export class Fixture {
       const helper = new FixtureRelationHelper(instance, relation, params);
 
       if (helper.userProvidedValue()) {
-        helper.setInstanceProperty(helper.providedValue);
+        const value = await this.resolveRelationValue(helper.providedValue, helper.targetType);
+        helper.setInstanceProperty(value);
         this.log(helper.getLogMessage("Use Provided Value"));
-        helper.addThisInstanceToTheTargetSideArray(helper.providedValue);
+        helper.addThisInstanceToTheTargetSideArray(value);
         continue;
       }
 
