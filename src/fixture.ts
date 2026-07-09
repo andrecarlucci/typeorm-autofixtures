@@ -21,6 +21,7 @@ export class Fixture {
     const instance = await this.createInternal(type, providedValues);
     await this.repository.save(instance);
     await this.applyProvidedTimestampOverrides(instance, meta, providedValues);
+    this.echoProvidedRelations(instance, meta, providedValues);
     return instance;
   }
 
@@ -41,8 +42,34 @@ export class Fixture {
 
     await this.repository.save(instance);
     await this.applyProvidedTimestampOverrides(instance, meta, providedValues);
+    this.echoProvidedRelations(instance, meta, providedValues);
     this.logInstanceCreated(instance, meta);
     return instance;
+  }
+
+  /**
+   * Guarantees a relation the caller passed as an override is echoed back on the returned instance
+   * as the exact same object reference. `save` — especially the owning side of a one-to-one, or any
+   * cascaded relation — can replace the reference with a freshly managed copy, forcing tests to
+   * re-assign it by hand (`entity.user = user`). Re-applying the provided value here removes that.
+   *
+   * Partial overrides that were created inline (see nested relation creation) are left alone: the
+   * relation already holds the entity that was created for them.
+   */
+  private echoProvidedRelations<T>(instance: T, meta: EntityMetadata, providedValues: Partial<T>): void {
+    for (const relation of meta.relations) {
+      const propertyName = relation.propertyName as keyof T;
+      const provided = providedValues[propertyName];
+      if (provided === undefined) {
+        continue;
+      }
+      if (this.isPartialToCreate(provided, relation.inverseEntityMetadata.target as EntityTarget<any>)) {
+        continue;
+      }
+      if (instance[propertyName] !== provided) {
+        instance[propertyName] = provided as any;
+      }
+    }
   }
 
   /**

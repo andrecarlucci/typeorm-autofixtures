@@ -19,6 +19,10 @@ import Position from "./schema-task-tracking/position.entity";
 import { PositionSchema } from "./schema-task-tracking/position.schema";
 import Event from "./schema-task-tracking/event.entity";
 import { EventSchema } from "./schema-task-tracking/event.schema";
+import Citizen from "./schema-task-tracking/citizen.entity";
+import { CitizenSchema } from "./schema-task-tracking/citizen.schema";
+import Passport from "./schema-task-tracking/passport.entity";
+import { PassportSchema } from "./schema-task-tracking/passport.schema";
 
 /**
  * Rules to decide when to create relations:
@@ -42,6 +46,8 @@ describe("task-tracking fixture tests", () => {
     ProductSchema,
     PositionSchema,
     EventSchema,
+    CitizenSchema,
+    PassportSchema,
   ];
 
   let database: Database;
@@ -323,6 +329,44 @@ describe("task-tracking fixture tests", () => {
       const another = await fixture.create(Position);
       expect(another.companyId).toBe(company.id);
       expect(existing.companyId).toBe(company.id);
+    });
+  });
+
+  describe("Provided relations echo back on the returned instance", () => {
+    it("Many-to-one provided value is the same reference", async () => {
+      const company = await fixture.create(Company);
+      const position = await fixture.create(Position, { name: "Engineer", company });
+      expect(position.company).toBe(company);
+    });
+
+    it("Non-owning one-to-one provided value echoes", async () => {
+      const user = await fixture.create(User);
+      const profile = await fixture.create(UserProfile, { user });
+      expect(profile.user).toBe(user);
+    });
+
+    it("Many-to-many provided array echoes", async () => {
+      const user = await fixture.create(User);
+      const task = await fixture.create(Task, { users: [user] } as any);
+      expect((task.users as any)[0]).toBe(user);
+    });
+
+    it("Nested-created relation echoes back", async () => {
+      const position = await fixture.create(Position, { name: "Engineer", company: { _name: "Acme" } as any });
+      expect(position.company._name).toBe("Acme");
+      expect(position.companyId).toBe(position.company.id);
+    });
+
+    it("Owning one-to-one with cascade echoes the provided reference", async () => {
+      // Owning one-to-one + cascade is the path most likely to have `save` swap the relation
+      // reference for a managed copy on some DB backends; the echo guarantee keeps it stable.
+      const citizen = await fixture.create(Citizen, { name: "Ana" });
+      const passport = await fixture.create(Passport, { code: "P1", citizen });
+      expect(passport.citizen).toBe(citizen);
+
+      // The relationship is still persisted correctly.
+      const row = await repository.getRepository(Passport).findOneOrFail({ where: { id: passport.id }, relations: { citizen: true } });
+      expect(row.citizen.id).toBe(citizen.id);
     });
   });
 

@@ -240,6 +240,18 @@ Pass a second argument to change the fragment length:
 fixture.unique("Market", 4); // "Market-1-a3f2"
 ```
 
+## Provided relations echo back
+
+Any relation you pass as an override is guaranteed to come back on the returned instance as the **exact same object reference** you passed in:
+
+```typescript
+const company = await fixture.create(Company);
+const position = await fixture.create(Position, { company });
+expect(position.company).toBe(company); // always true
+```
+
+TypeORM's `save` can, on some setups (the owning side of a one-to-one, cascaded relations, subscribers), replace a relation reference with a freshly managed copy — which is why tests sometimes had to re-assign relations by hand (`entity.user = user`) after creating. The fixture re-applies your provided values after saving, so those fixups are no longer needed. Relations created inline from a [partial](#nested-inline-creation-of-relations) keep the entity that was created for them.
+
 ## Create / update date column overrides
 
 TypeORM overwrites `@CreateDateColumn` and `@UpdateDateColumn` values with the current time on every insert and update, so passing them as overrides to `create` normally has no effect — the value is lost as soon as the row is saved.
