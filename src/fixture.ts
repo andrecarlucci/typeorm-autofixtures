@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 import { randomUUID } from "crypto";
 import { ColumnMetadata } from "typeorm/metadata/ColumnMetadata";
-import { DataSource, EntityManager, EntityMetadata, EntityTarget } from "typeorm";
+import { DataSource, EntityManager, EntityMetadata, EntityTarget, FindOptionsWhere, ObjectLiteral } from "typeorm";
 import { FixtureRelationHelper } from "./fixture-relation.helper";
 
 export class Fixture {
@@ -55,6 +55,51 @@ export class Fixture {
       results.push(await this.create(type, providedValues));
     }
     return results;
+  }
+
+  /**
+   * Find-or-create: returns the first entity matching `where`, or creates a new one if none exists.
+   *
+   * Replaces hand-rolled find-or-create test helpers such as:
+   *
+   * ```typescript
+   * const existing = await repo.findOne({ where: { company: { id: company.id }, level } });
+   * return existing ?? repo.save(Rank.create(level, company));
+   * ```
+   *
+   * with a single call:
+   *
+   * ```typescript
+   * const rank = await fixture.getOrCreate(Rank, { company: { id: company.id }, level }, { company });
+   * ```
+   *
+   * `where` is a standard TypeORM find condition used to locate an existing row. When nothing
+   * matches, a new entity is created via `create`, using `{ ...where, ...extras }` as the provided
+   * values — so `extras` is where you pass the real relation instances or extra required fields
+   * that are only needed at creation time (and it wins over `where` on key collisions).
+   *
+   * Whichever path runs, the returned entity is placed in the context like a freshly created one,
+   * so later `create` calls can reuse it.
+   *
+   * @param type entity to look up or create
+   * @param where TypeORM find condition used to locate an existing row
+   * @param extras creation-only overrides, merged over `where` when a new entity must be created
+   */
+  public async getOrCreate<T extends ObjectLiteral>(
+    type: EntityTarget<T>,
+    where: FindOptionsWhere<T>,
+    extras: Partial<T> = {},
+  ): Promise<T> {
+    const meta = this.dataSource.getMetadata(type);
+    this.log(`===> User Call: GetOrCreate ${meta.name} ===`);
+    const existing = await this.repository.findOne(type, { where });
+    if (existing) {
+      this.log(`### Found existing ${meta.name}, reusing`);
+      this.addToContext(existing, meta.name);
+      return existing;
+    }
+    this.log(`### No existing ${meta.name} matched, creating`);
+    return this.create(type, { ...where, ...extras } as Partial<T>);
   }
 
   private allRequiredColumnsAreSet<T>(instance: T, meta: EntityMetadata): boolean {

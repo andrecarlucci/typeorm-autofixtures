@@ -231,6 +231,75 @@ describe("task-tracking fixture tests", () => {
     });
   });
 
+  describe("fixture.getOrCreate(type, where, extras)", () => {
+    it("Creates a new entity when none matches", async () => {
+      const team = await fixture.getOrCreate(Team, { name: "QA" });
+      expect(team.id).toBeDefined();
+      expect(team.name).toBe("QA");
+    });
+
+    it("Returns the existing entity when one matches (by scalar)", async () => {
+      const first = await fixture.getOrCreate(Team, { name: "QA" });
+      const second = await fixture.getOrCreate(Team, { name: "QA" });
+      expect(second.id).toBe(first.id);
+
+      const count = await repository.getRepository(Team).count();
+      expect(count).toBe(1);
+    });
+
+    it("Applies extras only when creating", async () => {
+      const created = await fixture.getOrCreate(Team, { name: "QA" }, { code: "QA-1" });
+      expect(created.code).toBe("QA-1");
+
+      // Existing row is returned untouched; extras are ignored on the hit path.
+      const found = await fixture.getOrCreate(Team, { name: "QA" }, { code: "QA-2" });
+      expect(found.id).toBe(created.id);
+      expect(found.code).toBe("QA-1");
+    });
+
+    it("Find-or-creates a child scoped to a relation (extras carries the real entity)", async () => {
+      const company = await fixture.create(Company);
+
+      const first = await fixture.getOrCreate(
+        Position,
+        { company: { id: company.id }, name: "Engineer" },
+        { company },
+      );
+      const second = await fixture.getOrCreate(
+        Position,
+        { company: { id: company.id }, name: "Engineer" },
+        { company },
+      );
+
+      expect(second.id).toBe(first.id);
+      expect(first.companyId).toBe(company.id);
+      const count = await repository.getRepository(Position).count();
+      expect(count).toBe(1);
+    });
+
+    it("Creates distinct rows for the same name in different companies", async () => {
+      const companyA = await fixture.create(Company);
+      const companyB = await fixture.create(Company);
+
+      const a = await fixture.getOrCreate(Position, { company: { id: companyA.id }, name: "Engineer" }, { company: companyA });
+      const b = await fixture.getOrCreate(Position, { company: { id: companyB.id }, name: "Engineer" }, { company: companyB });
+
+      expect(a.id).not.toBe(b.id);
+      expect(a.companyId).toBe(companyA.id);
+      expect(b.companyId).toBe(companyB.id);
+    });
+
+    it("Places the returned entity in the context for later reuse", async () => {
+      const company = await fixture.create(Company);
+      const existing = await fixture.getOrCreate(Position, { company: { id: company.id }, name: "Engineer" }, { company });
+
+      // A subsequent Position create reuses the company from context (last-created reuse).
+      const another = await fixture.create(Position);
+      expect(another.companyId).toBe(company.id);
+      expect(existing.companyId).toBe(company.id);
+    });
+  });
+
   describe("When creating a Position (composite unique)", () => {
     it("Uses UUID suffix for column in composite @Unique([companyId, name])", async () => {
       const company = await fixture.create(Company);

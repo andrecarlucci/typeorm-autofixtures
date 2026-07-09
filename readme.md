@@ -119,6 +119,35 @@ It also accepts optional values applied to every created entity:
 const tasks = await fixture.createMany(3, Task, { name: 'Bulk Task' });
 ```
 
+## Find-or-create
+
+Use `getOrCreate` to reuse an existing row when one already matches, or create it otherwise. This replaces the hand-rolled find-or-create helpers tests tend to accumulate:
+
+```typescript
+// Before
+const existing = await repo.findOne({ where: { company: { id: company.id }, level } });
+const rank = existing ?? (await repo.save(Rank.create(level, company)));
+
+// After
+const rank = await fixture.getOrCreate(Rank, { company: { id: company.id }, level }, { company });
+```
+
+The signature is `getOrCreate(Type, where, extras?)`:
+
+- **`where`** — a standard TypeORM find condition used to locate an existing row.
+- **`extras`** — creation-only overrides. They are merged over `where` (and win on key collisions) and used **only** when a new entity has to be created. This is where you pass the real relation instances or extra required fields that the find condition expresses by id.
+
+```typescript
+// Reuses the same team on the second call — no duplicate row.
+const a = await fixture.getOrCreate(Team, { name: 'QA' });
+const b = await fixture.getOrCreate(Team, { name: 'QA' });
+expect(b.id).toBe(a.id);
+```
+
+Whichever path runs, the returned entity is placed in the [context](#using-the-context) like a freshly created one, so later `create` calls can reuse it.
+
+> **Note:** on the find path, `extras` is ignored — an existing row is returned untouched, never updated.
+
 ## Default values
 
 When creating an entity, non-nullable columns are automatically populated with default values based on their type:
